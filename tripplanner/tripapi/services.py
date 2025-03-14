@@ -5,6 +5,9 @@ import math
 import os
 import matplotlib.pyplot as plt
 import cv2
+import matplotlib
+
+matplotlib.use('Agg')
 
 class TripPlannerService:
     def __init__(self):
@@ -350,8 +353,23 @@ class TripPlannerService:
                 'start_hour': rest_start_hour,
                 'end_hour': rest_end_hour
             })
+            
+    def generate_eld_drawing_data(self, eld_logs):
+        """
+        Convert ELD logs into a structured format for drawing logs on a PNG.
+        """
+        formatted_logs = []
+        
+        for log in eld_logs:
+            day_data = []
+            for entry in log['log_entries']:
+                day_data.append((entry['start_hour'], entry['status']))
+                day_data.append((entry['end_hour'], entry['status']))
+            formatted_logs.append({'date': log['date'], 'entries': day_data})
+        
+        return formatted_logs
     
-    def draw_eld_lines(hours):
+    def draw_eld_lines(self, hours):
         # Load the image
         image_path = os.path.abspath("blank-paper-log.png")
         img = cv2.imread(image_path)
@@ -397,6 +415,22 @@ class TripPlannerService:
         ax.plot([prev_x, last_x], [prev_y, prev_y], color='black', linewidth=2, zorder=1)
         ax.scatter(last_x, prev_y, color='red', s=40, zorder=2)
         
+        output_path = os.path.abspath(f"eld_log_{datetime.now().strftime('%Y%m%d%H%M%S')}{i}.png")
+        
         # Display the overlayed image
         plt.axis('off')
-        plt.show()
+        plt.savefig(output_path, bbox_inches='tight', dpi=300)
+        plt.close(fig)
+        print(f"ELD log saved to {output_path}")
+        
+    def generate_and_draw_eld_logs(self, eld_logs):
+        """
+        Process daily logs, convert them into drawing format, and plot.
+        """
+        drawing_data = self.generate_eld_drawing_data(eld_logs)
+        
+        for log in drawing_data:
+            print(f"Drawing log for date: {log['date']}")
+            self.draw_eld_lines(log['entries']) 
+        
+        return drawing_data

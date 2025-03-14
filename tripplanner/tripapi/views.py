@@ -73,6 +73,8 @@ def plan_trip(request):
             rest_stops_result
         )
         
+        drawing_data = trip_planner.generate_and_draw_eld_logs(eld_logs_result)
+        
         # Create trip plan object
         trip_plan = TripPlan.objects.create(
             driver=driver,
@@ -99,14 +101,12 @@ def plan_trip(request):
         # Create ELD logs
         for log_data in eld_logs_result:
             # Generate drawing data for this log
-            # drawing_data = trip_planner.generate_eld_drawing_data(log_data)
             
             ELDLog.objects.create(
                 trip=trip_plan,
                 date=log_data['date'],
                 log_data={
                     'entries': log_data['log_entries'],
-                    # 'drawing_data': drawing_data
                 },
                 total_driving_hours=log_data['total_driving_hours'],
                 total_on_duty_hours=log_data['total_on_duty_hours'],
@@ -116,7 +116,7 @@ def plan_trip(request):
         # Return complete trip plan with rest stops and ELD logs
         response_data = TripPlanSerializer(trip_plan).data
         
-        return Response(response_data, status=status.HTTP_201_CREATED)
+        return Response({"trip_plan": response_data, "drawing_data": drawing_data}, status=status.HTTP_201_CREATED)
     
     except Exception as e:
         return Response(

@@ -14,7 +14,7 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/plan-trip/', plan_trip, name='plan-trip'),
     # path('api/eld-log-image/<int:log_id>/', generate_eld_log_image, name='eld-log-image'),
-]
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 # Add static and media URLs for development
 if settings.DEBUG:

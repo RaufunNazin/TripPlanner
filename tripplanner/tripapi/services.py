@@ -6,6 +6,7 @@ import os
 import matplotlib.pyplot as plt
 import cv2
 import matplotlib
+from django.conf import settings
 
 matplotlib.use('Agg')
 
@@ -112,6 +113,7 @@ class TripPlannerService:
         params = {
             "api_key": self.ORS_API_KEY,
             "text": query,
+            "boundary.country": "USA",
             "size": 1  # Get the top result
         }
         if lon and lat:
@@ -126,10 +128,10 @@ class TripPlannerService:
             return {"longitude": location[0], "latitude": location[1]}
         return None
     
-    def plan_rest_stops(self, route_data, current_cycle_used):
+    def plan_rest_stops(self, route_data, current_cycle_used, current_location_coordinates, pickup_location_coordinates, dropoff_location_coordinates):
         """Plan rest stops based on route data and HOS regulations"""
+        
         total_miles = route_data['distance_miles']
-        total_hours = route_data['duration_hours']
         
         # Initialize planning variables
         remaining_daily_driving = self.MAX_DAILY_DRIVING
@@ -147,13 +149,23 @@ class TripPlannerService:
         # Track journey status
         miles_traveled = 0
         hours_driven = 0
-        
+
         # Split journey into segments
         while miles_traveled < total_miles:
             # Calculate how many miles can be driven before HOS limits
             drivable_hours = min(remaining_daily_driving, remaining_daily_duty, remaining_cycle_hours)
             drivable_miles = drivable_hours * self.AVG_SPEED
             
+            # Dynamically calculate stop coordinates based on progress
+            current_lon = (
+                pickup_location_coordinates[0] +
+                ((dropoff_location_coordinates[0] - pickup_location_coordinates[0]) * (miles_traveled / total_miles))
+            )
+            current_lat = (
+                pickup_location_coordinates[1] +
+                ((dropoff_location_coordinates[1] - pickup_location_coordinates[1]) * (miles_traveled / total_miles))
+            )
+
             # Check if we need a fuel stop
             if miles_since_last_fuel + drivable_miles > self.FUEL_DISTANCE:
                 # Calculate where the fuel stop will be
@@ -172,12 +184,9 @@ class TripPlannerService:
                 # Add a short rest/fuel stop (30 min)
                 fuel_stop_arrival = current_time + timedelta(hours=hours_to_fuel)
                 fuel_stop_departure = fuel_stop_arrival + timedelta(minutes=30)
-                
-                # Calculate location of fuel stop (approximate based on distance)
-                fuel_stop_percent = miles_traveled / total_miles
 
-                # In a real app, you'd use the route's waypoints to find the actual location
-                fuel_stop_coords = self.get_stop_coordinates("fuel stop", lon=0, lat=0)
+                # Get actual fuel stop location
+                fuel_stop_coords = self.get_stop_coordinates("gas station", lon=current_lon, lat=current_lat)
                 fuel_stop_location = fuel_stop_coords if fuel_stop_coords else "Unknown fuel stop"
                 
                 rest_stops.append({
@@ -193,7 +202,7 @@ class TripPlannerService:
                 
                 # Subtract rest time from daily duty
                 remaining_daily_duty -= 0.5
-                
+            
             else:
                 # Check if we can complete the remainder of the journey
                 remaining_miles = total_miles - miles_traveled
@@ -219,10 +228,9 @@ class TripPlannerService:
                     # Add rest stop
                     rest_stop_arrival = current_time
                     rest_stop_departure = rest_stop_arrival + timedelta(hours=rest_hours)
-                    
-                    # Calculate location of rest stop (approximate based on distance)
-                    rest_stop_percent = miles_traveled / total_miles
-                    rest_stop_coords = self.get_stop_coordinates("rest stop")
+
+                    # Get actual rest stop location
+                    rest_stop_coords = self.get_stop_coordinates("coffee shop", lon=current_lon, lat=current_lat)
                     rest_stop_location = rest_stop_coords if rest_stop_coords else "Unknown rest stop"
                     
                     rest_stops.append({
@@ -254,10 +262,8 @@ class TripPlannerService:
         Generate structured ELD logs ensuring each day totals 24 hours.
         Includes on-duty, off-duty, driving, and rest periods while enforcing compliance.
         """
-        # print(trip_plan_data)
         print(rest_stops_data)
         departure_time = rest_stops_data['departure_time']
-        arrival_time = rest_stops_data['estimated_arrival']
         rest_stops = rest_stops_data['rest_stops']
         total_miles_remaining = rest_stops_data['total_miles']
         total_cycle_hours_used = current_cycle_used
@@ -269,17 +275,18 @@ class TripPlannerService:
             day_log = {
                 'date': current_day,
                 'log_entries': [],
-                'total_off_duty_hours': 0,
-                'total_sleeper_hours': 0,
-                'total_driving_hours': 0,
-                'total_on_duty_hours': 0,
-                'total_hours': 0,
-                'total_miles': 0
+                'total_off_duty_hours': 0.0,
+                'total_sleeper_hours': 0.0,
+                'total_driving_hours': 0.0,
+                'total_on_duty_hours': 0.0,
+                'total_hours': 0.0,
+                'total_miles': 0.0
             }
 
             # Set start and end times for the current day
             day_start = max(departure_time, datetime.combine(current_day, datetime.min.time()))
             day_end = datetime.combine(current_day, datetime.min.time()) + timedelta(hours=24)
+            max_drive_until = datetime.combine(current_day, datetime.min.time()) + timedelta(hours=22)
             current_time = day_start
 
             # Ensure the driver starts at 6 AM if it's a fresh day
@@ -302,6 +309,9 @@ class TripPlannerService:
 
             # Start with pre-trip inspection (30 min)
             inspection_end_time = current_time + timedelta(minutes=30)
+            if inspection_end_time >= day_end:  # Avoid going beyond 24 hours
+                inspection_end_time = day_end
+
             day_log['log_entries'].append({
                 'status': 'on_duty',
                 'start_hour': current_time.hour + current_time.minute / 60.0,
@@ -313,10 +323,15 @@ class TripPlannerService:
             # Determine available driving time based on HOS rules
             available_driving_hours = min(11, 70 - total_cycle_hours_used)
             max_possible_drive_hours = total_miles_remaining / 55
-            driving_hours_today = min(available_driving_hours, max_possible_drive_hours)
+
+            # Stop driving if past 22.0 hours
+            if current_time >= max_drive_until:
+                driving_hours_today = 0
+            else:
+                driving_end_time = min(current_time + timedelta(hours=min(available_driving_hours, max_possible_drive_hours)), max_drive_until)
+                driving_hours_today = (driving_end_time - current_time).total_seconds() / 3600
 
             if driving_hours_today > 0:
-                driving_end_time = min(current_time + timedelta(hours=driving_hours_today), day_end)
                 day_log['log_entries'].append({
                     'status': 'driving',
                     'start_hour': current_time.hour + current_time.minute / 60.0,
@@ -327,67 +342,64 @@ class TripPlannerService:
                 current_time = driving_end_time
 
             # Process rest stops
-            day_rest_stops = [stop for stop in rest_stops if stop['arrival_time'].date() == current_day]
-            for stop in day_rest_stops:
-                if current_time < stop['arrival_time']:
-                    day_log['log_entries'].append({
-                        'status': 'driving',
-                        'start_hour': current_time.hour + current_time.minute / 60.0,
-                        'end_hour': stop['arrival_time'].hour + stop['arrival_time'].minute / 60.0
-                    })
-                
-                day_log['log_entries'].append({
-                    'status': 'off_duty' if not stop['is_fuel_stop'] else 'on_duty',
-                    'start_hour': stop['arrival_time'].hour + stop['arrival_time'].minute / 60.0,
-                    'end_hour': stop['departure_time'].hour + stop['departure_time'].minute / 60.0
-                })
-                
-                if stop['is_fuel_stop']:
-                    day_log['total_on_duty_hours'] += 0.5
-                else:
-                    day_log['total_off_duty_hours'] += stop['rest_duration']
-                
-                current_time = stop['departure_time']
+            # day_rest_stops = [stop for stop in rest_stops if stop['arrival_time'].date() == current_day]
+            # for stop in day_rest_stops:
+            #     if current_time < stop['arrival_time']:
+            #         # Add driving until the rest stop if applicable
+            #         day_log['log_entries'].append({
+            #             'status': 'driving',
+            #             'start_hour': current_time.hour + current_time.minute / 60.0,
+            #             'end_hour': stop['arrival_time'].hour + stop['arrival_time'].minute / 60.0
+            #         })
+            #         day_log['total_driving_hours'] += (stop['arrival_time'] - current_time).total_seconds() / 3600
+            #         current_time = stop['arrival_time']
 
-            # If all miles are covered, switch to sleeper
-            if total_miles_remaining <= 0:
+            #     # Add rest stop
+            #     day_log['log_entries'].append({
+            #         'status': 'off_duty' if not stop['is_fuel_stop'] else 'on_duty',
+            #         'start_hour': stop['arrival_time'].hour + stop['arrival_time'].minute / 60.0,
+            #         'end_hour': stop['departure_time'].hour + stop['departure_time'].minute / 60.0
+            #     })
+
+            #     if stop['is_fuel_stop']:
+            #         day_log['total_on_duty_hours'] += 0.5
+            #     else:
+            #         day_log['total_off_duty_hours'] += stop['rest_duration']
+
+            #     current_time = stop['departure_time']
+
+            # Ensure no off-duty period starts before the last activity ends
+            last_end_hour = max(entry["end_hour"] for entry in day_log["log_entries"])
+
+            # If there is remaining time, add off-duty or sleeper
+            if last_end_hour < 24.0:
                 day_log['log_entries'].append({
                     'status': 'sleeper',
-                    'start_hour': current_time.hour + current_time.minute / 60.0,
+                    'start_hour': last_end_hour,
                     'end_hour': 24.0
                 })
-                day_log['total_sleeper_hours'] += 24.0 - (current_time.hour + current_time.minute / 60.0)
-                eld_logs.append(day_log)
-                break  # Exit loop since the trip is complete
-
-            # Ensure sleeper berth goes **until 24.0** if all driving is completed
-            if day_log['total_driving_hours'] >= self.MAX_DAILY_DRIVING:
-                if current_time < day_end:
-                    day_log['log_entries'].append({
-                        'status': 'sleeper',
-                        'start_hour': current_time.hour + current_time.minute / 60.0,
-                        'end_hour': 24.0
-                    })
-                    day_log['total_sleeper_hours'] += 24.0 - (current_time.hour + current_time.minute / 60.0)
+                day_log['total_sleeper_hours'] += (24.0 - last_end_hour)
 
             # Compute total miles driven
             day_log['total_miles'] = day_log['total_driving_hours'] * self.AVG_SPEED
 
-            # Calculate total hours for the day
-            day_log['total_hours'] = (day_log['total_off_duty_hours'] + day_log['total_sleeper_hours'] +
-                                        day_log['total_driving_hours'] + day_log['total_on_duty_hours'])
+            # Calculate total hours for the day (must be exactly 24)
+            day_log['total_hours'] = (
+                day_log['total_off_duty_hours'] +
+                day_log['total_sleeper_hours'] +
+                day_log['total_driving_hours'] +
+                day_log['total_on_duty_hours']
+            )
 
-            # Ensure total hours do not exceed 24
-            # if day_log['total_hours'] > 24:
-            #     excess = day_log['total_hours'] - 24
-            #     day_log['total_off_duty_hours'] -= excess  # Reduce excess from off-duty time
-            #     day_log['total_hours'] = 24
+            if round(day_log['total_hours'], 2) != 24.0:
+                print(f"Warning: Total hours for {current_day} is {day_log['total_hours']}, should be 24.")
 
             eld_logs.append(day_log)
             total_cycle_hours_used += (day_log['total_driving_hours'] + day_log['total_on_duty_hours'])
             current_day += timedelta(days=1)
 
         return eld_logs
+
 
     def _add_driving_entry(self, day_log, start_time, end_time):
         """ Helper to add driving entries ensuring compliance with daily limits """
@@ -396,11 +408,22 @@ class TripPlannerService:
 
         driving_hours = end_hour - start_hour
 
-        if driving_hours > 0:
-            if day_log['total_driving_hours'] + driving_hours > self.MAX_DAILY_DRIVING:
-                driving_hours = self.MAX_DAILY_DRIVING - day_log['total_driving_hours']
-                end_hour = start_hour + driving_hours
+        # Ensure driving does not go past 24.0 (end of day)
+        if end_hour > 24.0:
+            driving_hours = 24.0 - start_hour
+            end_hour = 24.0
 
+        # Ensure driving does not start after 22.0
+        if start_hour >= 22.0:
+            return  # No driving allowed past 22.0
+
+        # Ensure driving does not exceed max daily limit
+        if day_log['total_driving_hours'] + driving_hours > self.MAX_DAILY_DRIVING:
+            driving_hours = self.MAX_DAILY_DRIVING - day_log['total_driving_hours']
+            end_hour = start_hour + driving_hours
+
+        # Ensure valid driving hours
+        if driving_hours > 0:
             day_log['log_entries'].append({
                 'status': 'driving',
                 'start_hour': start_hour,
@@ -409,37 +432,52 @@ class TripPlannerService:
             day_log['total_driving_hours'] += driving_hours
             day_log['total_on_duty_hours'] += driving_hours
 
+
     def _add_rest_entry(self, day_log, stop):
         """ Helper to add rest entries correctly handling fuel stops and sleep breaks """
         rest_start_hour = stop['arrival_time'].hour + stop['arrival_time'].minute / 60.0
         rest_end_hour = stop['departure_time'].hour + stop['departure_time'].minute / 60.0
 
+        # Ensure rest period does not exceed 24.0 (end of day)
+        if rest_end_hour > 24.0:
+            rest_end_hour = 24.0
+
+        # Ensure valid rest times
+        if rest_start_hour >= rest_end_hour:
+            return  # Skip invalid entries
+
         if stop['is_fuel_stop']:
-            # Fuel stops are on-duty for 30 min, rest is off-duty
+            # Fuel stops are on-duty for 30 min, then off-duty if time allows
+            fuel_end = min(rest_start_hour + 0.5, rest_end_hour)
             day_log['log_entries'].append({
                 'status': 'on_duty',
                 'start_hour': rest_start_hour,
-                'end_hour': min(rest_start_hour + 0.5, rest_end_hour)
+                'end_hour': fuel_end
             })
-            day_log['total_on_duty_hours'] += min(0.5, rest_end_hour - rest_start_hour)
+            day_log['total_on_duty_hours'] += fuel_end - rest_start_hour
 
-            if rest_end_hour > rest_start_hour + 0.5:
+            # If there's remaining time, switch to off-duty
+            if fuel_end < rest_end_hour:
                 day_log['log_entries'].append({
                     'status': 'off_duty',
-                    'start_hour': rest_start_hour + 0.5,
+                    'start_hour': fuel_end,
                     'end_hour': rest_end_hour
                 })
-                day_log['total_off_duty_hours'] += rest_end_hour - (rest_start_hour + 0.5)
+                day_log['total_off_duty_hours'] += rest_end_hour - fuel_end
         else:
+            # Regular rest stops
             day_log['log_entries'].append({
                 'status': 'off_duty',
                 'start_hour': rest_start_hour,
                 'end_hour': rest_end_hour
             })
+            
+            rest_duration = rest_end_hour - rest_start_hour
             if stop.get('is_sleeper_berth', False):
-                day_log['total_sleeper_hours'] += rest_end_hour - rest_start_hour
+                day_log['total_sleeper_hours'] += rest_duration
             else:
-                day_log['total_off_duty_hours'] += rest_end_hour - rest_start_hour
+                day_log['total_off_duty_hours'] += rest_duration
+
             
     def generate_eld_drawing_data(self, eld_logs):
         """
@@ -456,7 +494,15 @@ class TripPlannerService:
         
         return formatted_logs
     
+    def generate_image_url(self, image_filename):
+        """Generate a media URL for the image."""
+        return f"{settings.MEDIA_URL}{image_filename}"
+    
     def draw_eld_lines(self, hours):
+        # Define media directory
+        media_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "media")
+        if not os.path.exists(media_dir):
+            os.makedirs(media_dir)
         # Load the image
         image_path = os.path.abspath("blank-paper-log.png")
         img = cv2.imread(image_path)
@@ -484,6 +530,8 @@ class TripPlannerService:
         
         # Draw ELD lines
         prev_x, prev_y = None, None
+        prev_hour = None
+        total_hours = {"off_duty": 0, "sleeper": 0, "driving": 0, "on_duty": 0}
         for i, (hour, status) in enumerate(hours):
             x = graph_left + hour * hour_step
             y = status_levels[status]
@@ -494,30 +542,63 @@ class TripPlannerService:
                 ax.scatter(x, y, color='red', s=10, zorder=2)
                 ax.plot([x, x], [prev_y, y], color='black', linewidth=1, zorder=1)
                 ax.plot([prev_x, x], [prev_y, prev_y], color='black', linewidth=1, zorder=1)
+                
+                # Correctly calculate the duration for each status
+            if prev_hour is not None:
+                duration = hour - prev_hour
+                total_hours[status] += duration
             
             prev_x, prev_y = x, y
+            prev_hour = hour
         
         # Ensure the last point extends to the end
         last_x = graph_right
         ax.plot([prev_x, last_x], [prev_y, prev_y], color='black', linewidth=1, zorder=1)
         ax.scatter(last_x, prev_y, color='red', s=10, zorder=2)
         
-        output_path = os.path.abspath(f"eld_log_{datetime.now().strftime('%Y%m%d%H%M%S')}{i}.png")
+        # Display total hours beside the logs
+        for status, hours in total_hours.items():
+            y_pos = status_levels[status] + 5
+            ax.text(graph_right + 20, y_pos, f"{hours:.2f}", fontsize=6, color='black', ha='center')
+            
+        # Calculate total on-duty and driving time
+        total_on_duty = total_hours["on_duty"] + total_hours["driving"]
         
-        # Display the overlayed image
+        # Draw red circle around total on-duty and driving time
+        circle_x = graph_right - 50
+        circle_y = graph_bottom + 60
+        circle_radius = 30
+        ax.add_patch(plt.Circle((circle_x, circle_y), circle_radius, color='red', fill=False, linewidth=2))
+        ax.text(circle_x, circle_y, f"{total_on_duty:.2f}", fontsize=10, color='black', weight='bold', ha='center', va='center')
+        
+        # Generate filename & save the image in MEDIA_ROOT
+        image_filename = f"eld_log_{datetime.now().strftime('%Y%m%d%H%M%S')}{i}.png"
+        output_path = os.path.join(settings.MEDIA_ROOT, image_filename)
+
+        # Ensure matplotlib doesn't show GUI
         plt.axis('off')
         plt.savefig(output_path, bbox_inches='tight', dpi=300)
         plt.close(fig)
-        print(f"ELD log saved to {output_path}")
+
+        print(f"✅ ELD log saved at: {output_path}")
+
+        return f"{settings.MEDIA_URL}{image_filename}"
         
     def generate_and_draw_eld_logs(self, eld_logs):
         """
         Process daily logs, convert them into drawing format, and plot.
+        Generate a separate PNG file for each day's ELD log.
         """
         drawing_data = self.generate_eld_drawing_data(eld_logs)
-        
+        image_paths = []
+
         for log in drawing_data:
-            print(f"Drawing log for date: {log['date']}")
-            self.draw_eld_lines(log['entries']) 
-        
-        return drawing_data
+            date_str = log['date'].strftime('%Y-%m-%d')  # Ensure date format is correct
+            print(f"Drawing log for date: {date_str}")
+
+            # Save a separate image for each day's ELD log
+            image_path = self.draw_eld_lines(log['entries'])  
+            image_paths.append(image_path)  # Append each day's image path separately
+
+        print(f"✅ Total images saved: {len(image_paths)}")
+        return drawing_data, image_paths

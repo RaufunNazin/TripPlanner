@@ -64,17 +64,20 @@ def plan_trip(request):
         # Plan rest stops
         rest_stops_result = trip_planner.plan_rest_stops(
             route_result,
-            current_cycle_used
+            current_cycle_used,
+            current_location_coordinates=trip_planner._get_coordinates(current_location),
+            pickup_location_coordinates=trip_planner._get_coordinates(pickup_location),
+            dropoff_location_coordinates=trip_planner._get_coordinates(dropoff_location),
         )
         
-        # # Generate ELD logs
+        # Generate ELD logs
         eld_logs_result = trip_planner.generate_eld_logs(
             route_result,
             rest_stops_result,
             current_cycle_used
         )
         
-        drawing_data = trip_planner.generate_and_draw_eld_logs(eld_logs_result)
+        drawing_data, image_path = trip_planner.generate_and_draw_eld_logs(eld_logs_result)
         
         # Create trip plan object
         trip_plan = TripPlan.objects.create(
@@ -123,7 +126,7 @@ def plan_trip(request):
         # Return complete trip plan with rest stops and ELD logs
         response_data = TripPlanSerializer(trip_plan).data
         
-        return Response({"trip_plan": response_data, "drawing_data": drawing_data}, status=status.HTTP_201_CREATED)
+        return Response({"trip_plan": response_data, "drawing_data": drawing_data, "image_path": image_path}, status=status.HTTP_201_CREATED)
     
     except Exception as e:
         return Response(

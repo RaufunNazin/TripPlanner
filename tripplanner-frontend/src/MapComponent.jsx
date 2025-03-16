@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -9,26 +9,28 @@ import {
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useLocation } from "react-router-dom";
+import "leaflet-routing-machine/dist/leaflet-routing-machine.css";
+import "leaflet-routing-machine";
 
 const customIcons = {
   current: new L.Icon({
-    iconUrl: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+    iconUrl: "/placeholder.png",
     iconSize: [32, 32],
   }),
   pickup: new L.Icon({
-    iconUrl: "https://maps.google.com/mapfiles/ms/icons/green-dot.png",
+    iconUrl: "/location.png",
     iconSize: [32, 32],
   }),
   dropoff: new L.Icon({
-    iconUrl: "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+    iconUrl: "/dropoff.png",
     iconSize: [32, 32],
   }),
   fuel: new L.Icon({
-    iconUrl: "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png",
+    iconUrl: "gas-pump.png",
     iconSize: [32, 32],
   }),
   rest: new L.Icon({
-    iconUrl: "https://maps.google.com/mapfiles/ms/icons/purple-dot.png",
+    iconUrl: "/coffee.png",
     iconSize: [32, 32],
   }),
 };
@@ -36,6 +38,9 @@ const customIcons = {
 const MapComponent = () => {
   const location = useLocation();
   const routeData = location.state || {};
+  useEffect(() => {
+    console.log(routeData);
+  }, []);
   const {
     currentLocation,
     pickupLocation,
@@ -59,72 +64,77 @@ const MapComponent = () => {
   );
 
   return (
-    <div className="w-full h-screen">
-      <div className="p-4 bg-gray-100 shadow-md flex justify-between">
-        <h2 className="text-lg font-bold">Trip Details</h2>
-        <p>Total Miles: {parseFloat(totalMiles).toFixed(2)} miles</p>
-        <p>Estimated Duration: {parseFloat(totalDuration).toFixed(2)} hours</p>
-        <p>Pickup: {pickupLocation.name}</p>
-        <p>Dropoff: {dropoffLocation.name}</p>
+    <div className="w-full h-screen mx-auto flex flex-col items-center justify-around rounded-lg">
+      <div className="text-3xl text-main cursor-pointer">TripPlanner</div>
+      <div className="flex flex-col justify-center items-center h-[80vh] w-[80vw] border-2 rounded-lg">
+        <div className="p-4 bg-gray-50 shadow-md flex justify-between w-full rounded-t-lg">
+          <h2 className="text-lg font-bold">Trip Details</h2>
+          <p>Total Miles: {parseFloat(totalMiles).toFixed(2)} miles</p>
+          <p>
+            Estimated Duration: {parseFloat(totalDuration).toFixed(2)} hours
+          </p>
+          <p>Pickup: {pickupLocation.name}</p>
+          <p>Dropoff: {dropoffLocation.name}</p>
+        </div>
+        <MapContainer bounds={bounds} zoom={6} className="h-full w-full">
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+
+          {/* Markers */}
+          <Marker
+            position={[currentLocation.lat, currentLocation.lng]}
+            icon={customIcons.current}
+          >
+            <Popup>Current Location: {currentLocation.name}</Popup>
+          </Marker>
+
+          <Marker
+            position={[pickupLocation.lat, pickupLocation.lng]}
+            icon={customIcons.pickup}
+          >
+            <Popup>Pickup: {pickupLocation.name}</Popup>
+          </Marker>
+
+          <Marker
+            position={[dropoffLocation.lat, dropoffLocation.lng]}
+            icon={customIcons.dropoff}
+          >
+            <Popup>Dropoff: {dropoffLocation.name}</Popup>
+          </Marker>
+
+          {fuelStops.map((stop, index) => (
+            <Marker
+              key={index}
+              position={[stop.lat, stop.lng]}
+              icon={customIcons.fuel}
+            >
+              <Popup>Fuel Stop</Popup>
+            </Marker>
+          ))}
+
+          {restStops.map((stop, index) => (
+            <Marker
+              key={index}
+              position={[stop.lat, stop.lng]}
+              icon={customIcons.rest}
+            >
+              <Popup>Rest Stop</Popup>
+            </Marker>
+          ))}
+
+          {/* Routes */}
+          {routeToPickup.length > 0 && (
+            <Polyline
+              positions={routeToPickup}
+              color="blue"
+              dashArray="5, 10"
+              weight={3}
+            />
+          )}
+          {routeToDropoff.length > 0 && (
+            <Polyline positions={routeToDropoff} color="green" weight={4} />
+          )}
+        </MapContainer>
       </div>
-      <MapContainer bounds={bounds} zoom={6} className="h-[85vh] w-full">
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
-        {/* Markers */}
-        <Marker
-          position={[currentLocation.lat, currentLocation.lng]}
-          icon={customIcons.current}
-        >
-          <Popup>Current Location</Popup>
-        </Marker>
-
-        <Marker
-          position={[pickupLocation.lat, pickupLocation.lng]}
-          icon={customIcons.pickup}
-        >
-          <Popup>Pickup: {pickupLocation.name}</Popup>
-        </Marker>
-
-        <Marker
-          position={[dropoffLocation.lat, dropoffLocation.lng]}
-          icon={customIcons.dropoff}
-        >
-          <Popup>Dropoff: {dropoffLocation.name}</Popup>
-        </Marker>
-
-        {fuelStops.map((stop, index) => (
-          <Marker
-            key={index}
-            position={[stop.lat, stop.lng]}
-            icon={customIcons.fuel}
-          >
-            <Popup>Fuel Stop - Price: ${stop.price}/gal</Popup>
-          </Marker>
-        ))}
-
-        {restStops.map((stop, index) => (
-          <Marker
-            key={index}
-            position={[stop.lat, stop.lng]}
-            icon={customIcons.rest}
-          >
-            <Popup>Rest Stop - Amenities: {stop.amenities.join(", ")}</Popup>
-          </Marker>
-        ))}
-
-        {/* Routes */}
-        {routeToPickup.length > 0 && (
-          <Polyline
-            positions={routeToPickup}
-            color="blue"
-            dashArray="5, 10"
-            weight={3}
-          />
-        )}
-        {routeToDropoff.length > 0 && (
-          <Polyline positions={routeToDropoff} color="green" weight={4} />
-        )}
-      </MapContainer>
     </div>
   );
 };

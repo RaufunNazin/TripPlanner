@@ -35,13 +35,13 @@ const Planner = () => {
         lng: data.dropoff_location_coordinates[0],
         name: data.dropoff_location,
       },
-      fuel_stops: data.rest_stops
+      fuelStops: data.rest_stops
         .filter((stop) => stop.is_fuel_stop)
         .map((stop) => {
           const location = JSON.parse(stop.location.replace(/'/g, '"'));
           return { lat: location.latitude, lng: location.longitude };
         }),
-      rest_stops: data.rest_stops
+      restStops: data.rest_stops
         .filter((stop) => !stop.is_fuel_stop)
         .map((stop) => {
           const location = JSON.parse(stop.location.replace(/'/g, '"'));

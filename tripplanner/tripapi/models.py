@@ -53,3 +53,8 @@ class ELDLog(models.Model):
     
     def __str__(self):
         return f"ELD Log for {self.trip} on {self.date}"
+    
+
+class Location(models.Model):
+    name = models.CharField(max_length=255)
+    image = models.ImageField(upload_to="eld/")

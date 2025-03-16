@@ -22,3 +22,26 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+const routeData = {
+  currentLocation: { lat: 40.7128, lng: -74.0060 },
+  pickupLocation: { lat: 41.8781, lng: -87.6298, name: "Chicago" },
+  dropoffLocation: { lat: 34.0522, lng: -118.2437, name: "Los Angeles" },
+  fuelStops: [
+    { lat: 39.0997, lng: -94.5786 },
+    { lat: 36.1627, lng: -86.7816 },
+  ],
+  restStops: [
+    { lat: 38.6270, lng: -90.1994 },
+    { lat: 35.2271, lng: -80.8431 },
+  ],
+  routeToPickup: [
+    [40.7128, -74.0060],
+    [41.8781, -87.6298],
+  ],
+  routeToDropoff: [
+    [41.8781, -87.6298],
+    [34.0522, -118.2437],
+  ],
+  totalMiles: 2000,
+  totalDuration: 30,
+};

@@ -17,6 +17,7 @@ const Planner = () => {
   const [loading, setLoading] = useState(false);
   const [tripGenerated, setTripGenerated] = useState(false);
   const [data, setData] = useState(null);
+  const [imagePaths, setImagePaths] = useState([]);
 
   const formatData = (data) => {
     return {
@@ -50,6 +51,7 @@ const Planner = () => {
       routeToDropoff: data.route_data.metadata.query.coordinates,
       totalMiles: data.estimated_miles,
       totalDuration: data.estimated_duration,
+      imagePaths: imagePaths,
     };
   };
 
@@ -79,6 +81,7 @@ const Planner = () => {
       .then((response) => {
         console.log(response.data);
         setData(response.data.trip_plan);
+        setImagePaths(response.data.image_path);
         toast.success("Trip created successfully!");
         setLoading(false);
         setTripGenerated(true);

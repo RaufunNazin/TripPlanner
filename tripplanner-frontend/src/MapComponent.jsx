@@ -8,7 +8,7 @@ import {
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import "leaflet-routing-machine/dist/leaflet-routing-machine.css";
 import "leaflet-routing-machine";
 
@@ -36,6 +36,7 @@ const customIcons = {
 };
 
 const MapComponent = () => {
+  const nav = useNavigate();
   const location = useLocation();
   const routeData = location.state || {};
   useEffect(() => {
@@ -64,8 +65,34 @@ const MapComponent = () => {
   );
 
   return (
-    <div className="w-full h-screen mx-auto flex flex-col items-center justify-around rounded-lg">
-      <div className="text-3xl text-main cursor-pointer">TripPlanner</div>
+    <div className="w-full h-screen mx-auto flex flex-col items-center rounded-lg">
+      <div className="flex justify-start md:justify-center w-full py-5 pl-10 md:pl-0">
+        <div className="text-3xl text-main cursor-pointer">TripPlanner</div>
+        {/* <div className="flex justify-center items-center gap-10 fixed top-6 right-10">
+          {localStorage.getItem("token") ? (
+            <div className="flex items-center gap-5">
+              {JSON.parse(localStorage.getItem("user"))?.username || "User"}
+              <button
+                onClick={() => {
+                  localStorage.removeItem("token");
+                  localStorage.removeItem("user");
+                  nav("/login", { state: "logout" });
+                }}
+                className="text-lg text-red-700 cursor-pointer"
+              >
+                Logout
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => nav("/login")}
+              className="text-lg text-main cursor-pointer"
+            >
+              Login
+            </button>
+          )}
+        </div> */}
+      </div>
       <div className="flex flex-col justify-center items-center h-[80vh] w-[80vw] border-2 rounded-lg">
         <div className="p-4 bg-gray-50 shadow-md flex justify-between w-full rounded-t-lg">
           <h2 className="text-lg font-bold">Trip Details</h2>
@@ -134,6 +161,24 @@ const MapComponent = () => {
             <Polyline positions={routeToDropoff} color="green" weight={4} />
           )}
         </MapContainer>
+      </div>
+      <div className="flex items-center gap-5">
+        <div>
+          <button
+            onClick={() => window.print()}
+            className="bg-main text-white px-10 py-5 rounded-md text-xl duration-200 transition-all cursor-pointer mt-5"
+          >
+            Print Map
+          </button>
+        </div>
+        <div>
+          <button
+            onClick={() => nav("/print-eld", {state: routeData.imagePaths})}
+            className="bg-main text-white px-10 py-5 rounded-md text-xl duration-200 transition-all cursor-pointer mt-5"
+          >
+            View ELD Data
+          </button>
+        </div>
       </div>
     </div>
   );

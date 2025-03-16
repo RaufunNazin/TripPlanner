@@ -4,6 +4,7 @@ import Landing from "./Landing";
 import NotFound from "./NotFound";
 import Planner from "./Planner";
 import MapComponent from "./MapComponent";
+import PrintELD from "./PrintELD";
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="*" element={<NotFound />} />
         <Route path="/planner" element={<Planner />} />
         <Route path="trip-summary" element={<MapComponent />} />
+        <Route path="print-eld" element={<PrintELD />} />
       </Routes>
     </BrowserRouter>
   );

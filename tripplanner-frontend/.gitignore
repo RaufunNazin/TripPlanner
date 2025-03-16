@@ -45,3 +45,4 @@ const routeData = {
   totalMiles: 2000,
   totalDuration: 30,
 };
+.vercel

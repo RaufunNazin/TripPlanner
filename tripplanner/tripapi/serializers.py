@@ -27,7 +27,10 @@ class TripPlanSerializer(serializers.ModelSerializer):
         
 class TripInputSerializer(serializers.Serializer):
     current_location = serializers.CharField(max_length=200)
+    current_location_coordinates = serializers.JSONField(required=False)
     pickup_location = serializers.CharField(max_length=200)
+    pickup_location_coordinates = serializers.JSONField(required=False)
     dropoff_location = serializers.CharField(max_length=200)
+    dropoff_location_coordinates = serializers.JSONField(required=False)
     current_cycle_used = serializers.FloatField()
     driver_id = serializers.IntegerField(required=False)

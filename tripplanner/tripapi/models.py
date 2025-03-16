@@ -12,8 +12,11 @@ class Driver(models.Model):
 class TripPlan(models.Model):
     driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='trips')
     current_location = models.CharField(max_length=200)
+    current_location_coordinates = models.JSONField(null=True, blank=True)
     pickup_location = models.CharField(max_length=200)
+    pickup_location_coordinates = models.JSONField(null=True, blank=True)
     dropoff_location = models.CharField(max_length=200)
+    dropoff_location_coordinates = models.JSONField(null=True, blank=True)
     current_cycle_used = models.FloatField(help_text="Hours already used in the current cycle")
     created_at = models.DateTimeField(auto_now_add=True)
     
@@ -41,9 +44,12 @@ class ELDLog(models.Model):
     trip = models.ForeignKey(TripPlan, on_delete=models.CASCADE, related_name='eld_logs')
     date = models.DateField()
     log_data = models.JSONField(help_text="JSON representation of the ELD log entries")
-    total_driving_hours = models.FloatField()
-    total_on_duty_hours = models.FloatField()
-    total_miles_driven = models.FloatField()
+    total_off_duty_hours = models.FloatField(default=0.0)
+    total_sleeper_hours = models.FloatField(default=0.0)
+    total_driving_hours = models.FloatField(default=0.0)
+    total_on_duty_hours = models.FloatField(default=0.0)
+    total_hours = models.FloatField(default=0.0)
+    total_miles_driven = models.FloatField(default=0.0)
     
     def __str__(self):
         return f"ELD Log for {self.trip} on {self.date}"

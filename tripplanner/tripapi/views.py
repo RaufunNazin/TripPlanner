@@ -70,7 +70,8 @@ def plan_trip(request):
         # # Generate ELD logs
         eld_logs_result = trip_planner.generate_eld_logs(
             route_result,
-            rest_stops_result
+            rest_stops_result,
+            current_cycle_used
         )
         
         drawing_data = trip_planner.generate_and_draw_eld_logs(eld_logs_result)
@@ -79,8 +80,11 @@ def plan_trip(request):
         trip_plan = TripPlan.objects.create(
             driver=driver,
             current_location=current_location,
+            current_location_coordinates=trip_planner._get_coordinates(current_location),
             pickup_location=pickup_location,
+            pickup_location_coordinates=trip_planner._get_coordinates(pickup_location),
             dropoff_location=dropoff_location,
+            dropoff_location_coordinates=trip_planner._get_coordinates(dropoff_location),
             current_cycle_used=current_cycle_used,
             route_data=route_result['route_data'],
             estimated_miles=route_result['distance_miles'],
@@ -108,8 +112,11 @@ def plan_trip(request):
                 log_data={
                     'entries': log_data['log_entries'],
                 },
+                total_off_duty_hours=log_data['total_off_duty_hours'],
+                total_sleeper_hours=log_data['total_sleeper_hours'],
                 total_driving_hours=log_data['total_driving_hours'],
                 total_on_duty_hours=log_data['total_on_duty_hours'],
+                total_hours=log_data['total_hours'],
                 total_miles_driven=log_data['total_miles']
             )
         
